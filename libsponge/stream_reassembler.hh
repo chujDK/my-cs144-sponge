@@ -4,6 +4,7 @@
 #include "byte_stream.hh"
 
 #include <cstdint>
+#include <map>
 #include <string>
 
 //! \brief A class that assembles a series of excerpts from a byte stream (possibly out of order,
@@ -11,9 +12,13 @@
 class StreamReassembler {
   private:
     // Your code here -- add private members as necessary.
+    std::map<std::pair<size_t, size_t>, std::string> _unassembled;  //!< The unassembled in-order inconsistent buf
+    ByteStream _output;                                             //!< The reassembled in-order byte stream
+    size_t _capacity;                                               //!< The maximum number of bytes
+    size_t _eof_index{};                                            //!< Total bytes before eof
+    size_t _eof_recv{false};                                        //!< Have we recv eof?
 
-    ByteStream _output;  //!< The reassembled in-order byte stream
-    size_t _capacity;    //!< The maximum number of bytes
+    void insert_segment(const uint64_t index, const std::string &data);
 
   public:
     //! \brief Construct a `StreamReassembler` that will store up to `capacity` bytes.
