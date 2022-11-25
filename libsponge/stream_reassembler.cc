@@ -25,6 +25,9 @@ void StreamReassembler::insert_segment(const uint64_t index, const std::string &
     // XXX    PPP     merge to the prev
     //   CCCC
     //
+    // XXXXXXXX PPP   merge to the prev
+    //   CCCC
+    //
     // XXX   PPPP     merge to the next
     //      CC
     //
@@ -45,27 +48,32 @@ void StreamReassembler::insert_segment(const uint64_t index, const std::string &
         }
     }
 
-    auto capacity_left = _capacity - _output.buffer_size();
-    auto max_append_length = capacity_left - (start - _output.bytes_written());
-    end = min(start + max_append_length, end);
-
     std::pair<size_t, size_t> new_index;
 
-    if (iter->first.second >= start && iter->first.first <= start) {
+    if (iter == _unassembled.end()) {
+        // no intersect, directly insert
+        new_index.first = start;
+        new_index.second = end;
+        _unassembled[new_index] = data;
+    } else if (iter->first.second >= start && iter->first.first <= start) {
         // get the next end
         auto prev = iter;
         auto next = ++iter;
         auto prev_index = prev->first;
         auto prev_start = prev_index.first;
         auto prev_end = prev_index.second;
-        auto prev_data = prev->second;
+        std::string prev_data = prev->second;
 
         auto append_start = prev_end - start;
+
+        while (next != _unassembled.end() && next->first.second < end) {
+            ++next;
+        }
         if (next != _unassembled.end() && next->first.first <= end && next->first.second >= end) {
             auto next_index = next->first;
             auto next_start = next_index.first;
             auto next_end = next_index.second;
-            auto next_data = next->second;
+            std::string next_data = next->second;
 
             // merge the three
             auto n_append = next_start - prev_end;
@@ -97,7 +105,7 @@ void StreamReassembler::insert_segment(const uint64_t index, const std::string &
         auto next_index = iter->first;
         auto next_start = next_index.first;
         auto next_end = next_index.second;
-        auto next_data = iter->second;
+        std::string next_data = iter->second;
         _unassembled.erase(iter->first);
 
         auto n_append = next_start - start;
@@ -124,7 +132,9 @@ void StreamReassembler::insert_segment(const uint64_t index, const std::string &
 //! possibly out-of-order, from the logical stream, and assembles any newly
 //! contiguous substrings and writes them into the output stream in order.
 void StreamReassembler::push_substring(const string &data, const size_t index, const bool eof) {
-    size_t end_of_assembled = _output.bytes_written();
+    auto end_of_assembled = _output.bytes_written();
+    auto capacity_of_unassembled = _capacity - _output.buffer_size();
+    auto max_unassembled = end_of_assembled + capacity_of_unassembled;
 
     if (eof) {
         // shouldn't we just update the _eof_index once?
@@ -133,6 +143,14 @@ void StreamReassembler::push_substring(const string &data, const size_t index, c
     }
 
     if (index + data.length() > end_of_assembled) {
+        if (index + data.length() > max_unassembled) {
+            size_t nbytes = data.length();
+            nbytes -= (index + data.length() - max_unassembled);
+            insert_segment(index, data.substr(0, nbytes));
+        } else {
+            insert_segment(index, data);
+        }
+
         insert_segment(index, data);
 
         for (auto iter = _unassembled.cbegin(); iter != _unassembled.cend();) {

@@ -53,7 +53,7 @@ int main() {
                 throw runtime_error("test 2 - number of RX bytes is incorrect");
             }
             if (!equal(result.cbegin(), result.cend(), d.cbegin())) {
-                throw runtime_error("test 2 - content of RX bytes is incorrect");
+                throw runtime_error("test 2 - content of RX bytes is incorrect (content)");
             }
         }
     } catch (const exception &e) {
