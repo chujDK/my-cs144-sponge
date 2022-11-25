@@ -140,10 +140,8 @@ void StreamReassembler::push_substring(const string &data, const size_t index, c
         if (!_eof_index.has_value()) {
             // shouldn't we just update the _eof_index once?
             _eof_index = index + data.length();
-        }
-        if (index + data.length() > _eof_index.value()) {
-            // that's corrupted tcp segment
-            // don't insert
+        } else {
+            // multiple eof, ignore
             return;
         }
     }
