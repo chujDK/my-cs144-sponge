@@ -137,9 +137,15 @@ void StreamReassembler::push_substring(const string &data, const size_t index, c
     auto max_unassembled = end_of_assembled + capacity_of_unassembled;
 
     if (eof) {
-        // shouldn't we just update the _eof_index once?
-        _eof_index = index + data.length();
-        _eof_recv = true;
+        if (!_eof_index.has_value()) {
+            // shouldn't we just update the _eof_index once?
+            _eof_index = index + data.length();
+        }
+        if (index + data.length() > _eof_index.value()) {
+            // that's corrupted tcp segment
+            // don't insert
+            return;
+        }
     }
 
     if (index + data.length() > end_of_assembled) {
@@ -166,7 +172,7 @@ void StreamReassembler::push_substring(const string &data, const size_t index, c
         }
     }
 
-    if (_eof_recv && _output.bytes_written() == _eof_index) {
+    if (_eof_index.has_value() && _output.bytes_written() == _eof_index.value()) {
         _output.end_input();
     }
 }
