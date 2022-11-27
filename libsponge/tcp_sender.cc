@@ -30,7 +30,15 @@ void TCPSender::TCPFlightTracker::ackno_received(const WrappingInt32 &ackno, uin
         auto absolute_seqno = unwrap(iter->header().seqno, _isn, checkpoint);
         auto absolute_end = absolute_seqno + iter->length_in_sequence_space();
         auto absolute_ackno = unwrap(ackno, _isn, checkpoint);
-        if (absolute_ackno >= absolute_end) {
+        if (iter->header().syn) {
+            // this is an outgoing SYN package, we need to check it carefully: Impossible ackno (beyond next seqno) is
+            // ignored
+            if (absolute_ackno == absolute_seqno + 1) {
+                _segments.erase(iter++);
+            } else {
+                ++iter;
+            }
+        } else if (absolute_ackno >= absolute_end) {
             _segments.erase(iter++);
         } else {
             ++iter;
