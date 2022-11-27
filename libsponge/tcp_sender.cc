@@ -2,6 +2,7 @@
 
 #include "tcp_config.hh"
 
+#include <iostream>
 #include <random>
 
 // Dummy implementation of a TCP sender
@@ -115,8 +116,19 @@ void TCPSender::fill_window() {
         send(segment);
         return;
     }
+
+    auto absolute_seqno = _next_seqno;
+    auto window_right = unwrap(_ackno, _isn, _checkpoint) + _window_size;
     if (_stream.eof()) {
         // should send a FIN
+        if (window_right <= absolute_seqno) {
+            // no more space
+            return;
+        }
+        if (_next_seqno == _stream.bytes_read() + 2) {
+            // FIN already sent
+            return;
+        }
         TCPSegment segment;
         segment.header().seqno = wrap(_isn.raw_value() + _stream.bytes_read(), _isn);
         segment.header().fin = true;
@@ -125,8 +137,6 @@ void TCPSender::fill_window() {
         return;
     }
 
-    auto absolute_seqno = _next_seqno;
-    auto window_right = unwrap(_ackno, _isn, _checkpoint) + _window_size;
     if (_window_size == 0) {
         // If the receiver has announced a window size of zero, the fill_window method should act like the window size
         // is one.
@@ -135,14 +145,22 @@ void TCPSender::fill_window() {
     if (window_right > absolute_seqno) {
         auto payload_length = window_right - absolute_seqno;
         payload_length = min(payload_length, TCPConfig::MAX_PAYLOAD_SIZE);
-        send(_stream.read(payload_length), wrap(absolute_seqno, _isn));
+        if (_stream.input_ended()) {
+            auto data = _stream.read(payload_length);
+            if (data.length() < payload_length) {
+                send(std::move(data), wrap(absolute_seqno, _isn), true);
+            }
+        } else {
+            send(_stream.read(payload_length), wrap(absolute_seqno, _isn));
+        }
     }
 }
 
-void TCPSender::send(std::string &&data, const WrappingInt32 &seqno) {
+void TCPSender::send(std::string &&data, const WrappingInt32 &seqno, bool fin) {
     Buffer segment_payload{std::move(data)};
     TCPSegment segment;
     segment.header().seqno = seqno;
+    segment.header().fin = fin;
     segment.payload() = segment_payload;
     if (segment.length_in_sequence_space() == 0) {
         // this send method doesn't send empty payload
@@ -152,7 +170,8 @@ void TCPSender::send(std::string &&data, const WrappingInt32 &seqno) {
 }
 
 void TCPSender::send(const TCPSegment &segment) {
-    _next_seqno = _stream.bytes_read() + 1;
+    _checkpoint = _next_seqno;
+    _next_seqno += segment.length_in_sequence_space();
     _segments_out.push(segment);
     if (segment.length_in_sequence_space()) {
         // only tracking segments convey some data

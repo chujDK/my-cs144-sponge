@@ -39,7 +39,7 @@ class TCPSender {
     uint16_t _window_size{0};
 
     //! the last sent byte's absolute seqno
-    uint64_t _checkpoint{_isn.raw_value()};
+    uint64_t _checkpoint{0};
 
     //! current consecutive retransmissions number
     unsigned int _consecutive_retransmissions{0};
@@ -90,7 +90,8 @@ class TCPSender {
     //! \note they don't send any empty (zero seqno) payload
     //!@{
 
-    void send(std::string &&data, const WrappingInt32 &seqno);
+    //! \param[in] fin is supporting piggyback fin (fin contains data)
+    void send(std::string &&data, const WrappingInt32 &seqno, bool fin = false);
     void send(const TCPSegment &segment);
 
     //!@}
