@@ -106,17 +106,36 @@ uint64_t TCPSender::TCPFlightTracker::bytes_in_flight() const {
 uint64_t TCPSender::bytes_in_flight() const { return _tracker.bytes_in_flight(); }
 
 void TCPSender::fill_window() {
-    auto n_current_sent = _stream.bytes_read();
+    if (_next_seqno == 0) {
+        // should send a SYN
+        TCPSegment segment;
+        segment.header().seqno = _isn;
+        segment.header().syn = true;
+        segment.payload() = Buffer{""};
+        send(segment);
+        return;
+    }
+    if (_stream.eof()) {
+        // should send a FIN
+        TCPSegment segment;
+        segment.header().seqno = wrap(_isn.raw_value() + _stream.bytes_read(), _isn);
+        segment.header().fin = true;
+        segment.payload() = Buffer{""};
+        send(segment);
+        return;
+    }
+
+    auto absolute_seqno = _next_seqno;
     auto window_right = unwrap(_ackno, _isn, _checkpoint) + _window_size;
     if (_window_size == 0) {
         // If the receiver has announced a window size of zero, the fill_window method should act like the window size
         // is one.
         window_right++;
     }
-    if (window_right > n_current_sent) {
-        auto payload_length = window_right - n_current_sent;
+    if (window_right > absolute_seqno) {
+        auto payload_length = window_right - absolute_seqno;
         payload_length = min(payload_length, TCPConfig::MAX_PAYLOAD_SIZE);
-        send(_stream.read(payload_length), wrap(n_current_sent, _isn));
+        send(_stream.read(payload_length), wrap(absolute_seqno, _isn));
     }
 }
 
@@ -125,9 +144,6 @@ void TCPSender::send(std::string &&data, const WrappingInt32 &seqno) {
     TCPSegment segment;
     segment.header().seqno = seqno;
     segment.payload() = segment_payload;
-    if (next_seqno_absolute() == 0) {
-        segment.header().syn = true;
-    }
     if (segment.length_in_sequence_space() == 0) {
         // this send method doesn't send empty payload
         return;
