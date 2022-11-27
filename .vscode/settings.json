@@ -2,6 +2,11 @@
   "cSpell.words": [
     "ackno",
     "Reassembler",
+    "retx",
+    "Targs",
     "unassembled"
-  ]
+  ],
+  "[cpp]": {
+    "editor.tabSize": 4
+  }
 }

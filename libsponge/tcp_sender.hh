@@ -7,6 +7,7 @@
 #include "wrapping_integers.hh"
 
 #include <functional>
+#include <list>
 #include <queue>
 
 //! \brief The "sender" part of a TCP implementation.
@@ -31,6 +32,68 @@ class TCPSender {
 
     //! the (absolute) sequence number for the next byte to be sent
     uint64_t _next_seqno{0};
+
+    //! the last ack get from receiver
+    WrappingInt32 _ackno{_isn};
+    //! the last window size get from receiver
+    uint16_t _window_size{0};
+
+    //! the last sent byte's absolute seqno
+    uint64_t _checkpoint{_isn.raw_value()};
+
+    //! current consecutive retransmissions number
+    unsigned int _consecutive_retransmissions{0};
+
+    //! \brief Helper class tracking segments sent but not yet acknowledged (outstanding data)
+    class TCPFlightTracker {
+      private:
+        //! all segments tracked, sorted by time tick, from old to new
+        std::list<TCPSegment> _segments{};
+
+        //! the initial sequence number
+        WrappingInt32 _isn;
+
+        //! init retransmission timeout
+        unsigned int _init_rto;
+
+        //! effective retransmission timeout
+        unsigned int _rto;
+
+        //! timer, None as not running
+        std::optional<size_t> _time{std::nullopt};
+
+        //! for the seqno unwrapping
+        uint64_t _checkpoint{0};
+
+      public:
+        TCPFlightTracker(WrappingInt32 isn, size_t rto) : _isn(isn), _init_rto(rto), _rto(_init_rto) {}
+
+        //! \brief given current ack number and checkpoint, untrack all fully acknowledged segment
+        void ackno_received(const WrappingInt32 &ackno, uint64_t checkpoint);
+
+        std::optional<TCPSegment> tick(const size_t ms_since_last_tick);
+
+        void track(const TCPSegment &segment);
+
+        //! \brief make an exponential "backoff".
+        //! it slows down retransmissions on lousy networks to avoid further gumming up the works.
+        void double_rto() { _rto *= 2; }
+
+        uint64_t bytes_in_flight() const;
+        uint64_t max_seqno() const;
+    };
+
+    //! the tracker
+    TCPFlightTracker _tracker{_isn, _initial_retransmission_timeout};
+
+    //! \name raw send helper
+    //! \note they don't send any empty (zero seqno) payload
+    //!@{
+
+    void send(std::string &&data, const WrappingInt32 &seqno);
+    void send(const TCPSegment &segment);
+
+    //!@}
 
   public:
     //! Initialize a TCPSender
@@ -69,7 +132,7 @@ class TCPSender {
     size_t bytes_in_flight() const;
 
     //! \brief Number of consecutive retransmissions that have occurred in a row
-    unsigned int consecutive_retransmissions() const;
+    unsigned int consecutive_retransmissions() const { return _consecutive_retransmissions; }
 
     //! \brief TCPSegments that the TCPSender has enqueued for transmission.
     //! \note These must be dequeued and sent by the TCPConnection,
