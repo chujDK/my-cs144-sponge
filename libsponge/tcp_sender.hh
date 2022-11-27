@@ -36,7 +36,8 @@ class TCPSender {
     //! the last ack get from receiver
     WrappingInt32 _ackno{_isn};
     //! the last window size get from receiver
-    uint16_t _window_size{0};
+    //! init to 1 because TCPSender assume the window size as 1 byte before it gotten an ACK from the receiver
+    uint16_t _window_size{1};
 
     //! the last sent byte's absolute seqno
     uint64_t _checkpoint{0};
@@ -92,7 +93,8 @@ class TCPSender {
 
     //! \param[in] fin is supporting piggyback fin (fin contains data)
     void send(std::string &&data, const WrappingInt32 &seqno, bool fin = false);
-    void send(const TCPSegment &segment);
+    //! \param[in] resend when resend is true, we won't update the _next_seqno
+    void send(const TCPSegment &segment, bool resend = false);
 
     //!@}
 

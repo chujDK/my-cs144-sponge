@@ -50,17 +50,20 @@ std::optional<TCPSegment> TCPSender::TCPFlightTracker::tick(const size_t ms_sinc
 
     _time = _time.value() + ms_since_last_tick;
     if (_time.value() >= _rto) {
-        auto earliest = _segments.front();
-        auto earliest_seqno = unwrap(earliest.header().seqno, _isn, _checkpoint);
-        for (auto segment : _segments) {
-            auto absolute_seqno = unwrap(segment.header().seqno, _isn, _checkpoint);
+        // if _segments is empty, then the _time must stopped, so here it must have some segments
+        auto earliest = _segments.begin();
+        auto earliest_seqno = unwrap(earliest->header().seqno, _isn, _checkpoint);
+        for (auto segment = _segments.begin(); segment != _segments.end(); ++segment) {
+            auto absolute_seqno = unwrap(segment->header().seqno, _isn, _checkpoint);
             if (absolute_seqno < earliest_seqno) {
                 earliest = segment;
                 earliest_seqno = absolute_seqno;
             }
         }
         _time = {0};
-        return {earliest};
+        auto segment = *earliest;
+        _segments.erase(earliest);
+        return {segment};
     }
     return std::nullopt;
 }
@@ -169,9 +172,11 @@ void TCPSender::send(std::string &&data, const WrappingInt32 &seqno, bool fin) {
     send(segment);
 }
 
-void TCPSender::send(const TCPSegment &segment) {
+void TCPSender::send(const TCPSegment &segment, bool resend) {
     _checkpoint = _next_seqno;
-    _next_seqno += segment.length_in_sequence_space();
+    if (!resend) {
+        _next_seqno += segment.length_in_sequence_space();
+    }
     _segments_out.push(segment);
     if (segment.length_in_sequence_space()) {
         // only tracking segments convey some data
@@ -203,7 +208,7 @@ void TCPSender::tick(const size_t ms_since_last_tick) {
     auto segment = _tracker.tick(ms_since_last_tick);
     if (segment.has_value()) {
         // a. retransmit
-        send(segment.value());
+        send(segment.value(), true);
         // b. if the window size is not zero
         if (_window_size != 0) {
             // i. Keep track of the number of consecutive retransmissions, and increment it
