@@ -141,7 +141,7 @@ void TCPSender::fill_window() {
             return;
         }
         TCPSegment segment;
-        segment.header().seqno = wrap(_isn.raw_value() + _stream.bytes_read(), _isn);
+        segment.header().seqno = wrap(_stream.bytes_read() + 1, _isn);
         segment.header().fin = true;
         segment.payload() = Buffer{""};
         send(segment);
