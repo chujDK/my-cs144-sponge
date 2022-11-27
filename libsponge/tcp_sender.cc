@@ -15,14 +15,24 @@ void DUMMY_CODE(Targs &&.../* unused */) {}
 
 using namespace std;
 
-void TCPSender::TCPFlightTracker::ackno_received(const WrappingInt32 &ackno, uint64_t checkpoint) {
-    // a. Set the RTO back to its “initial value.”
-    _rto = _init_rto;
-
-    // b. If the sender has any outstanding data, restart the retransmission timer so that it will expire after RTO
-    // milliseconds (for the current value of RTO).
-    if (!_segments.empty()) {
-        _time = {0};
+void TCPSender::TCPFlightTracker::ackno_received(const WrappingInt32 &ackno,
+                                                 const uint16_t window_size,
+                                                 const WrappingInt32 &last_ackno,
+                                                 const uint64_t checkpoint) {
+    // When the receiver gives the sender an ackno that acknowledges the successful receipt of new data  (the ackno
+    // reflects an absolute sequence number bigger than any previous ackno)
+    if (unwrap(ackno, _isn, checkpoint) > unwrap(last_ackno, _isn, checkpoint)) {
+        // a. Set the RTO back to its “initial value.”
+        if (window_size != 0) {
+            // When filling window, treat a '0' window size as equal to '1' but don't back off RTO
+            _rto = _init_rto;
+        }
+        // b. If the sender has any outstanding data,
+        // restart the retransmission timer so that it will expire after RTO milliseconds (for the current value of
+        // RTO).
+        if (!_segments.empty()) {
+            _time = {0};
+        }
     }
 
     _checkpoint = checkpoint;
@@ -128,11 +138,16 @@ void TCPSender::fill_window() {
         return;
     }
 
-    auto absolute_seqno = _next_seqno;
     auto window_right = unwrap(_ackno, _isn, _checkpoint) + _window_size;
+    if (_window_size == 0) {
+        // If the receiver has announced a window size of zero, the fill_window method should act like the window size
+        // is one.
+        window_right++;
+    }
+
     if (_stream.eof()) {
         // should send a FIN
-        if (window_right <= absolute_seqno) {
+        if (window_right <= _next_seqno) {
             // no more space
             return;
         }
@@ -148,21 +163,24 @@ void TCPSender::fill_window() {
         return;
     }
 
-    if (_window_size == 0) {
-        // If the receiver has announced a window size of zero, the fill_window method should act like the window size
-        // is one.
-        window_right++;
-    }
-    if (window_right > absolute_seqno) {
-        auto payload_length = window_right - absolute_seqno;
-        payload_length = min(payload_length, TCPConfig::MAX_PAYLOAD_SIZE);
-        if (_stream.input_ended()) {
+    if (window_right > _next_seqno) {
+        auto real_window_size = window_right - _next_seqno;
+        for (uint64_t payload_start = 0; payload_start < real_window_size;
+             payload_start += TCPConfig::MAX_PAYLOAD_SIZE) {
+            auto payload_length = min(TCPConfig::MAX_PAYLOAD_SIZE, real_window_size - payload_start);
+
             auto data = _stream.read(payload_length);
-            if (data.length() < payload_length) {
-                send(std::move(data), wrap(absolute_seqno, _isn), true);
+            if (_stream.eof() && payload_start + data.length() + 1 <= real_window_size) {
+                send(std::move(data), wrap(_next_seqno, _isn), true);
+                break;
             }
-        } else {
-            send(_stream.read(payload_length), wrap(absolute_seqno, _isn));
+            if (data.length() < payload_length) {
+                auto fin = _stream.input_ended();
+                send(std::move(data), wrap(_next_seqno, _isn), fin);
+                break;
+            } else {
+                send(std::move(data), wrap(_next_seqno, _isn));
+            }
         }
     }
 }
@@ -196,7 +214,7 @@ void TCPSender::send(const TCPSegment &segment, bool resend) {
 //! \param window_size The remote receiver's advertised window size
 void TCPSender::ack_received(const WrappingInt32 ackno, const uint16_t window_size) {
     // delegate to the tracker
-    _tracker.ackno_received(ackno, _checkpoint);
+    _tracker.ackno_received(ackno, window_size, _ackno, _checkpoint);
 
     // c. Reset the count of “consecutive retransmissions” back to zero.
     _consecutive_retransmissions = 0;
@@ -206,7 +224,8 @@ void TCPSender::ack_received(const WrappingInt32 ackno, const uint16_t window_si
 
     // check the max seqno in the outstanding segments, determine if there has space to send
     if (_tracker.max_seqno() < unwrap(_ackno, _isn, _checkpoint) + _window_size) {
-        fill_window();
+        // FIXME: should we call fill_window here??
+        // fill_window();
     }
 }
 

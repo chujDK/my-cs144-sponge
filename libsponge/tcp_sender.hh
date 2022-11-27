@@ -70,7 +70,10 @@ class TCPSender {
         TCPFlightTracker(WrappingInt32 isn, size_t rto) : _isn(isn), _init_rto(rto), _rto(_init_rto) {}
 
         //! \brief given current ack number and checkpoint, untrack all fully acknowledged segment
-        void ackno_received(const WrappingInt32 &ackno, uint64_t checkpoint);
+        void ackno_received(const WrappingInt32 &ackno,
+                            const uint16_t window_size,
+                            const WrappingInt32 &last_ackno,
+                            const uint64_t checkpoint);
 
         std::optional<TCPSegment> tick(const size_t ms_since_last_tick);
 
