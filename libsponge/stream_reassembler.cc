@@ -155,8 +155,6 @@ void StreamReassembler::push_substring(const string &data, const size_t index, c
             insert_segment(index, data);
         }
 
-        insert_segment(index, data);
-
         for (auto iter = _unassembled.cbegin(); iter != _unassembled.cend();) {
             if (iter->first.first <= end_of_assembled) {
                 if (iter->first.second > end_of_assembled) {
