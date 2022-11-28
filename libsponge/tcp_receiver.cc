@@ -23,6 +23,14 @@ void TCPReceiver::segment_received(const TCPSegment &seg) {
             _reassembler.push_substring(data.copy(), 0, eof);
         }
     } else {
+        if (header.syn) {
+            // we don't want syn anymore
+            return;
+        }
+        if (seg.length_in_sequence_space() == 0) {
+            // not pushing zero length payload
+            return;
+        }
         bool eof = header.fin;
         const auto &data = seg.payload();
         auto seqno = header.seqno;

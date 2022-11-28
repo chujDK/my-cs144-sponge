@@ -246,4 +246,9 @@ void TCPSender::tick(const size_t ms_since_last_tick) {
     }
 }
 
-void TCPSender::send_empty_segment() { send(std::string(""), WrappingInt32(0)); }
+void TCPSender::send_empty_segment() {
+    TCPSegment segment;
+    segment.header().seqno = wrap(_next_seqno, _isn);
+    segment.payload() = {""};
+    send(segment);
+}

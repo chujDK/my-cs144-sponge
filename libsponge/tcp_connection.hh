@@ -21,6 +21,24 @@ class TCPConnection {
     //! in case the remote TCPConnection doesn't know we've received its whole stream?
     bool _linger_after_streams_finish{true};
 
+    //! helper method for TCPConnection to send a segment
+    void send(TCPSegment &seg);
+
+    //! helper method for TCPConnection to try to send a segment (use TCPSender's fill_window)
+    size_t try_send();
+
+    //! helper method for TCPConnection to read all segments in TCPSender, and push it to _segments_out
+    size_t send_all();
+
+    //! helper method to check if current state full fill the close prereq
+    bool check_prereq() const;
+
+    void set_linger_start_time();
+
+    size_t _current_time_tick{0};
+    size_t _time_tick_of_last_segment_received{0};
+    std::optional<size_t> _linger_start_time{};
+
   public:
     //! \name "Input" interface for the writer
     //!@{
