@@ -5,6 +5,8 @@
 #include "tcp_over_ip.hh"
 #include "tun.hh"
 
+#include <list>
+#include <map>
 #include <optional>
 #include <queue>
 
@@ -39,6 +41,26 @@ class NetworkInterface {
 
     //! outbound queue of Ethernet frames that the NetworkInterface wants sent
     std::queue<EthernetFrame> _frames_out{};
+
+    //! IP datagram destination MAC address unknow currently
+    std::list<std::pair<InternetDatagram, Address>> _ip_datagram{};
+
+    //! map the 32-bit ip to 48-bit mac
+    std::map<uint32_t, std::pair<EthernetAddress, size_t>> _arp_table{};
+
+    //! current time (in millisecond, start by 0)
+    size_t _current_time{};
+
+    //! helper method to send a arp frame
+    void send_arp(const uint16_t type,
+                  const EthernetAddress &target_ethernet_address,
+                  const uint32_t target_ip_address);
+
+    //! helper method try to send all queued datagram in _ip_datagram
+    void try_send_all();
+
+    //! helper method to direct send a ip datagram, caller should ensure the next_hop has cached in the _arp_table
+    void do_send_datagram(const InternetDatagram &dgram, const Address &next_hop);
 
   public:
     //! \brief Construct a network interface with given Ethernet (network-access-layer) and IP (internet-layer) addresses
