@@ -21,6 +21,12 @@ class TCPConnection {
     //! in case the remote TCPConnection doesn't know we've received its whole stream?
     bool _linger_after_streams_finish{true};
 
+    //! have we received or sent rst?
+    bool _rst{false};
+
+    //! helper method for TCPConnection to send a rst packet to peer
+    void goto_rst();
+
     //! helper method for TCPConnection to send a segment
     void send(TCPSegment &seg);
 
@@ -34,6 +40,8 @@ class TCPConnection {
     bool check_prereq() const;
 
     void set_linger_start_time();
+
+    void handle_rst();
 
     size_t _current_time_tick{0};
     size_t _time_tick_of_last_segment_received{0};
