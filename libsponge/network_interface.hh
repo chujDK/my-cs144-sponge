@@ -1,6 +1,7 @@
 #ifndef SPONGE_LIBSPONGE_NETWORK_INTERFACE_HH
 #define SPONGE_LIBSPONGE_NETWORK_INTERFACE_HH
 
+#include "arp_message.hh"
 #include "ethernet_frame.hh"
 #include "tcp_over_ip.hh"
 #include "tun.hh"
@@ -33,6 +34,9 @@
 //! and learns or replies as necessary.
 class NetworkInterface {
   private:
+    constexpr static size_t ARP_TIMEOUT = 5 * 1000;
+    constexpr static size_t MAPPING_TTL = 30 * 1000;
+
     //! Ethernet (known as hardware, network-access-layer, or link-layer) address of the interface
     EthernetAddress _ethernet_address;
 
@@ -45,19 +49,31 @@ class NetworkInterface {
     //! IP datagram destination MAC address unknow currently
     std::list<std::pair<InternetDatagram, Address>> _ip_datagram{};
 
+    //! un-replied flying arp datagram
+    std::list<std::pair<ARPMessage, size_t>> _arp_datagram{};
+
     //! map the 32-bit ip to 48-bit mac
     std::map<uint32_t, std::pair<EthernetAddress, size_t>> _arp_table{};
 
     //! current time (in millisecond, start by 0)
     size_t _current_time{};
 
+    //! helper method to check if there is already an arp request on the way
+    bool check_arp_request_exist(const uint32_t target_ip_address);
+
     //! helper method to send a arp frame
-    void send_arp(const uint16_t type,
+    void send_arp(const uint16_t opcode,
                   const EthernetAddress &target_ethernet_address,
                   const uint32_t target_ip_address);
 
     //! helper method try to send all queued datagram in _ip_datagram
     void try_send_all();
+
+    //! helper method to remove all timeouted mapping
+    void timeout_arp_table();
+
+    //! helper method to resend all timeouted arp datagram
+    void resend_arp();
 
     //! helper method to direct send a ip datagram, caller should ensure the next_hop has cached in the _arp_table
     void do_send_datagram(const InternetDatagram &dgram, const Address &next_hop);

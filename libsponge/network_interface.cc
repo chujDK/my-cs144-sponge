@@ -26,11 +26,20 @@ NetworkInterface::NetworkInterface(const EthernetAddress &ethernet_address, cons
          << ip_address.ip() << "\n";
 }
 
-void NetworkInterface::send_arp(const uint16_t type,
+bool NetworkInterface::check_arp_request_exist(const uint32_t target_ip_address) {
+    for (auto iter = _arp_datagram.cbegin(); iter != _arp_datagram.cend();) {
+        if (iter->first.target_ip_address == target_ip_address) {
+            return false;
+        }
+    }
+    return true;
+}
+
+void NetworkInterface::send_arp(const uint16_t opcode,
                                 const EthernetAddress &target_ethernet_address,
                                 const uint32_t target_ip_address) {
     EthernetFrame arp_frame;
-    if (type == ARPMessage::OPCODE_REQUEST) {
+    if (opcode == ARPMessage::OPCODE_REQUEST) {
         arp_frame.header().dst = ETHERNET_BROADCAST;
     } else {
         arp_frame.header().dst = target_ethernet_address;
@@ -39,7 +48,7 @@ void NetworkInterface::send_arp(const uint16_t type,
     arp_frame.header().type = EthernetHeader::TYPE_ARP;
 
     ARPMessage arp_msg;
-    arp_msg.opcode = type;
+    arp_msg.opcode = opcode;
     arp_msg.target_ethernet_address = target_ethernet_address;
     arp_msg.target_ip_address = target_ip_address;
 
@@ -47,6 +56,7 @@ void NetworkInterface::send_arp(const uint16_t type,
     arp_msg.sender_ip_address = _ip_address.ipv4_numeric();
 
     arp_frame.payload().append(arp_msg.serialize());
+    _arp_datagram.emplace_back(arp_msg, _current_time);
     _frames_out.push(arp_frame);
 }
 
@@ -72,7 +82,9 @@ void NetworkInterface::send_datagram(const InternetDatagram &dgram, const Addres
     } else {
         _ip_datagram.emplace_back(dgram, next_hop);
         // send a ARP datagram
-        send_arp(ARPMessage::OPCODE_REQUEST, {}, next_hop_ip);
+        if (check_arp_request_exist(next_hop_ip)) {
+            send_arp(ARPMessage::OPCODE_REQUEST, {}, next_hop_ip);
+        }
     }
 }
 
@@ -106,6 +118,15 @@ optional<InternetDatagram> NetworkInterface::recv_frame(const EthernetFrame &fra
         case EthernetHeader::TYPE_ARP:
             if (arp_msg_received.parse(frame.payload()) == ParseResult::NoError) {
                 if (arp_msg_received.opcode == ARPMessage::OPCODE_REPLY) {
+                    // remove the un-replied arp datagram
+                    for (auto iter = _arp_datagram.cbegin(); iter != _arp_datagram.cend();) {
+                        if (iter->first.target_ip_address == arp_msg_received.sender_ip_address) {
+                            _arp_datagram.erase(iter++);
+                            break;
+                        }
+                        ++iter;
+                    }
+
                     _arp_table[arp_msg_received.sender_ip_address] = {arp_msg_received.sender_ethernet_address,
                                                                       _current_time};
                     try_send_all();
@@ -127,5 +148,32 @@ optional<InternetDatagram> NetworkInterface::recv_frame(const EthernetFrame &fra
     }
 }
 
+void NetworkInterface::timeout_arp_table() {
+    for (auto iter = _arp_table.cbegin(); iter != _arp_table.cend();) {
+        if (_current_time - iter->second.second >= MAPPING_TTL) {
+            _arp_table.erase(iter++);
+        } else {
+            ++iter;
+        }
+    }
+}
+
+void NetworkInterface::resend_arp() {
+    for (auto iter = _arp_datagram.begin(); iter != _arp_datagram.end();) {
+        if (_current_time - iter->second >= ARP_TIMEOUT) {
+            // resend
+            auto arp_msg = iter->first;
+            _arp_datagram.erase(iter++);
+            send_arp(arp_msg.opcode, arp_msg.target_ethernet_address, arp_msg.target_ip_address);
+        } else {
+            ++iter;
+        }
+    }
+}
+
 //! \param[in] ms_since_last_tick the number of milliseconds since the last call to this method
-void NetworkInterface::tick(const size_t ms_since_last_tick) { _current_time += ms_since_last_tick; }
+void NetworkInterface::tick(const size_t ms_since_last_tick) {
+    _current_time += ms_since_last_tick;
+    timeout_arp_table();
+    resend_arp();
+}

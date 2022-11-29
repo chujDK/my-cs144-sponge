@@ -14,7 +14,7 @@ void get_URL(const string &host, const string &path) {
     http_request += "\r\n";
 
     Address host_address{host, "http"};
-    CS144TCPSocket tcp_socket;
+    FullStackSocket tcp_socket;
     tcp_socket.connect(host_address);
     tcp_socket.write(http_request);
 
