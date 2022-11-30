@@ -31,7 +31,6 @@ void Router::add_route(const uint32_t route_prefix,
 
 //! \param[in] dgram The datagram to be routed
 void Router::route_one_datagram(InternetDatagram &dgram) {
-    cerr << "DEBUG: recv: " << dgram.header().summary() + " payload=\"" + dgram.payload().concatenate() + "\"\n";
     if (dgram.header().ttl < 2) {
         return;
     }
