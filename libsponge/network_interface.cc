@@ -120,7 +120,7 @@ optional<InternetDatagram> NetworkInterface::recv_frame(const EthernetFrame &fra
         case EthernetHeader::TYPE_ARP:
             if (arp_msg_received.parse(frame.payload()) == ParseResult::NoError) {
                 if (arp_msg_received.opcode == ARPMessage::OPCODE_REPLY) {
-                    // remove the un-replied arp datagram
+                    // remove the (used to be) un-replied arp datagram
                     for (auto iter = _arp_datagram.cbegin(); iter != _arp_datagram.cend();) {
                         if (iter->first.target_ip_address == arp_msg_received.sender_ip_address) {
                             _arp_datagram.erase(iter++);

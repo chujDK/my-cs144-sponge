@@ -31,6 +31,7 @@ void Router::add_route(const uint32_t route_prefix,
 
 //! \param[in] dgram The datagram to be routed
 void Router::route_one_datagram(InternetDatagram &dgram) {
+    cerr << "DEBUG: recv: " << dgram.header().summary() + " payload=\"" + dgram.payload().concatenate() + "\"\n";
     if (dgram.header().ttl < 2) {
         return;
     }
@@ -41,9 +42,11 @@ void Router::route_one_datagram(InternetDatagram &dgram) {
     for (auto route : _route_table) {
         const auto &[sub_net, next_hop] = route;
         const auto &[sub_net_ip, sub_net_len] = sub_net;
-        if ((static_cast<uint64_t>(dst_ip) >> sub_net_len) == sub_net_ip) {
-            if (max_match.value_or(0) < sub_net_len) {
-                max_match = sub_net_len;
+        const auto sub_net_shift = 32 - sub_net_len;
+
+        if ((static_cast<uint64_t>((dst_ip ^ sub_net_ip)) >> sub_net_shift) == 0) {
+            if (max_match.value_or(33) > sub_net_shift) {
+                max_match = sub_net_shift;
                 chosen_route = route;
             }
         }
@@ -52,13 +55,13 @@ void Router::route_one_datagram(InternetDatagram &dgram) {
     if (max_match.has_value()) {
         const auto &[sub_net, next_hop] = chosen_route;
         const auto &[next_hop_ip_opt, next_hop_if] = next_hop;
-        auto next_hop_interface = interface(next_hop_if);
-        Address next_hop_ip{nullptr};
-        if (next_hop_ip_opt.has_value()) {
-            next_hop_ip = next_hop_ip_opt.value();
-        }
+        auto &next_hop_interface = interface(next_hop_if);
+
         dgram.header().ttl--;
         next_hop_interface.send_datagram(dgram, next_hop_ip_opt.value_or(Address::from_ipv4_numeric(dst_ip)));
+
+        cerr << "DEBUG: sent: " << dgram.header().summary() + " payload=\"" + dgram.payload().concatenate() + "\"\n"
+             << "interface: " << next_hop_if << "\n";
     }
 }
 
