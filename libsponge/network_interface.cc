@@ -56,7 +56,9 @@ void NetworkInterface::send_arp(const uint16_t opcode,
     arp_msg.sender_ip_address = _ip_address.ipv4_numeric();
 
     arp_frame.payload().append(arp_msg.serialize());
-    _arp_datagram.emplace_back(arp_msg, _current_time);
+    if (opcode == ARPMessage::OPCODE_REQUEST) {
+        _arp_datagram.emplace_back(arp_msg, _current_time);
+    }
     _frames_out.push(arp_frame);
 }
 
@@ -150,7 +152,7 @@ optional<InternetDatagram> NetworkInterface::recv_frame(const EthernetFrame &fra
 
 void NetworkInterface::timeout_arp_table() {
     for (auto iter = _arp_table.cbegin(); iter != _arp_table.cend();) {
-        if (_current_time - iter->second.second >= MAPPING_TTL) {
+        if (_current_time - iter->second.second > MAPPING_TTL) {
             _arp_table.erase(iter++);
         } else {
             ++iter;
@@ -160,7 +162,7 @@ void NetworkInterface::timeout_arp_table() {
 
 void NetworkInterface::resend_arp() {
     for (auto iter = _arp_datagram.begin(); iter != _arp_datagram.end();) {
-        if (_current_time - iter->second >= ARP_TIMEOUT) {
+        if (_current_time - iter->second > ARP_TIMEOUT) {
             // resend
             auto arp_msg = iter->first;
             _arp_datagram.erase(iter++);
