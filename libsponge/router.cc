@@ -59,9 +59,6 @@ void Router::route_one_datagram(InternetDatagram &dgram) {
 
         dgram.header().ttl--;
         next_hop_interface.send_datagram(dgram, next_hop_ip_opt.value_or(Address::from_ipv4_numeric(dst_ip)));
-
-        cerr << "DEBUG: sent: " << dgram.header().summary() + " payload=\"" + dgram.payload().concatenate() + "\"\n"
-             << "interface: " << next_hop_if << "\n";
     }
 }
 
